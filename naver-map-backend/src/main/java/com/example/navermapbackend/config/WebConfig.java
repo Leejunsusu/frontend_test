@@ -9,22 +9,30 @@ public class WebConfig implements WebMvcConfigurer {
 
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        System.out.println("🌐 CORS 설정 적용 중...");
+        System.out.println("🌐 CORS 설정 적용 중 (크롬 호환성 개선)...");
 
-        registry.addMapping("/**")  // 모든 경로에 대해 CORS 허용
+        registry.addMapping("/**")
                 .allowedOrigins(
-                        "http://localhost:3000",              // Vue.js 개발 서버 (Vite 기본)
-                        "http://localhost:5173",              // Vue.js 개발 서버 (Vite 대안)
-                        "http://127.0.0.1:3000",              // 로컬 주소 변형
-                        "http://127.0.0.1:5173"               // 로컬 주소 변형
+                        "http://localhost:3000",              // Vue.js 기본
+                        "http://localhost:5173",              // Vite 기본
+                        "http://127.0.0.1:3000",              // 로컬 IP
+                        "http://127.0.0.1:5173",              // 로컬 IP
+                        "http://localhost:8080",              // 백엔드 자체 테스트용
+                        "http://localhost:4173",              // Vite 프리뷰
+                        "http://localhost:8081"               // 다른 개발 포트
                 )
-                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS") // 허용할 HTTP 메서드
-                .allowedHeaders("*")                      // 모든 헤더 허용
-                .allowCredentials(false)                   // 쿠키/인증 정보 허용 안함
-                .maxAge(3600);                           // preflight 캐시 시간 (1시간)
+                .allowedMethods("GET", "POST", "PUT", "DELETE", "OPTIONS", "HEAD") // HEAD 추가
+                .allowedHeaders("*")
+                .allowCredentials(false)                  // ✅ 일관성 유지
+                .maxAge(86400);                          // ✅ 24시간으로 연장 (크롬 최적화)
 
-        System.out.println("✅ CORS 설정 완료!");
-        System.out.println("🔗 허용된 Origin: http://localhost:3000, http://localhost:5173");
-        System.out.println("🔧 허용된 메서드: GET, POST, PUT, DELETE, OPTIONS");
+        System.out.println("✅ CORS 설정 완료 (크롬 호환성 개선)!");
+        System.out.println("🔗 허용된 모든 Origin 목록:");
+        System.out.println("   - http://localhost:3000");
+        System.out.println("   - http://localhost:5173");
+        System.out.println("   - http://127.0.0.1:3000");
+        System.out.println("   - http://127.0.0.1:5173");
+        System.out.println("🔧 허용된 메서드: GET, POST, PUT, DELETE, OPTIONS, HEAD");
+        System.out.println("⏰ Preflight 캐시: 24시간");
     }
 }
