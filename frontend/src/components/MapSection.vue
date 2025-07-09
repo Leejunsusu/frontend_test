@@ -5,19 +5,19 @@
 </template>
 
 <script>
-import { markerAPI } from '../services/apiService'
+// ✅ mapStore import 추가
+import { useMapStore } from '../stores/mapStore.js'
 
 export default {
   name: 'MapSection',
 
   emits: ['map-ready', 'markers-updated'],
 
-  data() {
+  // ✅ mapStore 사용 설정
+  setup() {
+    const mapStore = useMapStore()
     return {
-      map: null,
-      markers: [],
-      markerData: [],
-      isMapReady: false
+      mapStore
     }
   },
 
@@ -62,30 +62,30 @@ export default {
           )
         }
 
-        this.map = new naver.maps.Map('map', mapOptions)
+        const map = new naver.maps.Map('map', mapOptions)
+
+        // ✅ mapStore에 지도 인스턴스 저장
+        this.mapStore.setMapInstance(map)
 
         // 지도 크기 강제 조정
         setTimeout(() => {
-          if (this.map && typeof this.map.refresh === 'function') {
-            this.map.refresh()
+          if (map && typeof map.refresh === 'function') {
+            map.refresh()
           }
         }, 100)
 
-        naver.maps.Event.addListener(this.map, 'idle', () => {
-          if (!this.isMapReady) {
+        naver.maps.Event.addListener(map, 'idle', () => {
+          if (!this.mapStore.isMapReady) {
             console.log('✅ 지도 로드 완료!')
-            this.isMapReady = true
-            this.$emit('map-ready')
-            this.loadMarkersFromServer()
-          }
-        })
 
-        // 윈도우 리사이즈 이벤트 추가
-        window.addEventListener('resize', () => {
-          if (this.map && typeof this.map.refresh === 'function') {
-            setTimeout(() => {
-              this.map.refresh()
-            }, 100)
+            // ✅ mapStore에 준비 상태 설정
+            this.mapStore.setMapReady(true)
+
+            // 부모 컴포넌트에 알림
+            this.$emit('map-ready')
+
+            // ✅ mapStore를 통해 마커 로드
+            this.loadMarkersFromServer()
           }
         })
 
@@ -96,179 +96,76 @@ export default {
       }
     },
 
-    // 📍 서버에서 마커들 로드
+    // ✅ mapStore를 통한 마커 로드
     async loadMarkersFromServer() {
-      if (!this.isMapReady) {
-        console.log('⏳ 지도 준비 중... 마커 로드 대기')
-        return
-      }
-
       try {
-        console.log('📡 서버에서 마커들 로드 중...')
+        console.log('📡 MapSection: 마커 로드 시작')
 
-        const markerDataList = await markerAPI.getAllMarkers()
-        this.markerData = markerDataList
+        // mapStore를 통해 마커 로드
+        await this.mapStore.loadMarkersFromServer()
 
-        for (const markerData of markerDataList) {
-          await this.addMarkerToMap(markerData)
-        }
+        // 부모 컴포넌트에 마커 업데이트 알림
+        this.$emit('markers-updated', this.mapStore.markerData)
 
-        console.log(`✅ ${markerDataList.length}개의 마커를 로드했습니다.`)
-        this.notifyMarkersUpdated()
+        console.log('✅ MapSection: 마커 로드 완료')
 
       } catch (error) {
-        console.error('❌ 마커 로드 실패:', error)
-        this.markerData = []
+        console.error('❌ MapSection: 마커 로드 실패:', error)
       }
     },
 
-    // 🗺️ 지도에 마커 추가
-    async addMarkerToMap(markerData) {
-      if (!this.map || !this.isMapReady) {
-        console.log('⚠️ 지도 준비 안됨 - 마커 추가 대기')
-        return
-      }
-
-      try {
-        console.log('🗺️ 지도에 마커 표시:', markerData.title)
-
-        const lat = parseFloat(markerData.latitude)
-        const lng = parseFloat(markerData.longitude)
-
-        if (isNaN(lat) || isNaN(lng)) {
-          console.error('❌ 잘못된 좌표:', markerData.latitude, markerData.longitude)
-          return
-        }
-
-        const marker = new naver.maps.Marker({
-          position: new naver.maps.LatLng(lat, lng),
-          map: this.map,
-          title: markerData.title || '마커'
-        })
-
-        const infoWindow = new naver.maps.InfoWindow({
-          content: this.createInfoWindowContent(markerData),
-          maxWidth: 300,
-          backgroundColor: "#fff",
-          borderColor: "#ccc",
-          borderWidth: 1,
-          anchorSize: new naver.maps.Size(10, 10)
-        })
-
-        naver.maps.Event.addListener(marker, 'click', () => {
-          try {
-            this.markers.forEach(m => {
-              if (m.infoWindow && typeof m.infoWindow.close === 'function') {
-                m.infoWindow.close()
-              }
-            })
-
-            if (typeof infoWindow.open === 'function') {
-              infoWindow.open(this.map, marker)
-            }
-          } catch (error) {
-            console.error('❌ 정보창 열기 실패:', error)
-          }
-        })
-
-        const markerObj = {
-          id: markerData.id,
-          marker: marker,
-          infoWindow: infoWindow,
-          data: markerData
-        }
-
-        this.markers.push(markerObj)
-
-      } catch (error) {
-        console.error('❌ 마커 추가 실패:', error)
-      }
-    },
-
-    // 📝 정보창 컨텐츠 생성
-    createInfoWindowContent(markerData) {
-      const createdAt = markerData.createdAt ?
-          new Date(markerData.createdAt).toLocaleString() :
-          '알 수 없음'
-
-      return `
-        <div style="padding: 15px; min-width: 200px;">
-          <h4 style="margin: 0 0 10px 0; color: #333;">${markerData.title || '마커'}</h4>
-          <p style="margin: 0 0 10px 0; color: #666; font-size: 14px;">${markerData.description || '설명 없음'}</p>
-          <p style="margin: 0; color: #888; font-size: 12px;">
-            📍 위도: ${parseFloat(markerData.latitude).toFixed(6)}<br>
-            📍 경도: ${parseFloat(markerData.longitude).toFixed(6)}<br>
-            🕐 생성: ${createdAt}
-          </p>
-        </div>
-      `
-    },
-
-    // 🔄 마커 새로고침
+    // ✅ 외부에서 호출 가능한 메서드들 - mapStore 위임
     async refreshMarkers() {
-      console.log('🔄 지도섹션: 마커 새로고침 중...')
+      console.log('🔄 MapSection: 마커 새로고침')
 
       try {
-        this.markers.forEach(markerObj => {
-          if (markerObj.infoWindow && typeof markerObj.infoWindow.close === 'function') {
-            markerObj.infoWindow.close()
-          }
-          if (markerObj.marker && typeof markerObj.marker.setMap === 'function') {
-            markerObj.marker.setMap(null)
-          }
-        })
-        this.markers = []
-        this.markerData = []
-
-        await this.loadMarkersFromServer()
-
-        console.log('✅ 새로고침 완료')
-        this.notifyMarkersUpdated()
-
+        await this.mapStore.refreshMarkers()
+        this.$emit('markers-updated', this.mapStore.markerData)
+        console.log('✅ MapSection: 마커 새로고침 완료')
       } catch (error) {
-        console.error('❌ 새로고침 실패:', error)
+        console.error('❌ MapSection: 마커 새로고침 실패:', error)
       }
     },
 
-    // 📍 특정 위치로 이동
+    // ✅ 특정 위치로 이동 - mapStore 위임
     moveToLocation(lat, lng, zoom = 15) {
-      if (this.map && this.isMapReady) {
-        console.log(`📍 지도섹션: 위치 이동 (${lat}, ${lng})`)
-        const location = new naver.maps.LatLng(lat, lng)
-        this.map.setCenter(location)
-        this.map.setZoom(zoom)
-      }
+      console.log(`📍 MapSection: 위치 이동 요청 (${lat}, ${lng})`)
+      this.mapStore.moveToLocation(lat, lng, zoom)
     },
 
-    // 🏠 지도 초기 위치로 리셋
+    // ✅ 지도 초기 위치로 리셋 - mapStore 위임
     resetView() {
-      console.log('🏠 지도섹션: 지도 리셋')
-      if (this.map && this.isMapReady) {
-        const pos = new naver.maps.LatLng(37.5666805, 126.9784147)
-        this.map.setCenter(pos)
-        this.map.setZoom(12)
-      }
+      console.log('🏠 MapSection: 지도 리셋')
+      this.mapStore.resetView()
     },
 
-    // 📍 마커 정보창 표시
+    // ✅ 마커 정보창 표시 - mapStore 위임
     showMarkerInfo(markerId) {
-      const markerObj = this.markers.find(m => m.id == markerId)
-      if (markerObj && markerObj.infoWindow) {
-        console.log('📍 지도섹션: 마커 정보창 표시:', markerId)
-
-        this.markers.forEach(m => {
-          if (m.infoWindow && m.id != markerId) {
-            m.infoWindow.close()
-          }
-        })
-
-        markerObj.infoWindow.open(this.map, markerObj.marker)
-      }
+      console.log('📍 MapSection: 마커 정보창 표시 요청:', markerId)
+      this.mapStore.showMarkerInfo(markerId)
     },
 
-    // 📡 마커 목록 변경시 부모에게 알림
-    notifyMarkersUpdated() {
-      this.$emit('markers-updated', this.markerData)
+    // ✅ 여러 마커 추가 (새로운 기능)
+    async addMultipleMarkers(markerDataList) {
+      console.log('📌 MapSection: 여러 마커 추가:', markerDataList.length + '개')
+
+      for (const markerData of markerDataList) {
+        await this.mapStore.addMarkerToMap(markerData)
+      }
+
+      this.$emit('markers-updated', this.mapStore.markerData)
+    },
+
+    // ✅ 카테고리별 마커 필터링
+    filterMarkersByCategory(category) {
+      console.log('🔍 MapSection: 마커 필터링:', category)
+      this.mapStore.filterMarkersByCategory(category)
+    },
+
+    // ✅ 가장 가까운 마커 찾기
+    findNearestMarker(lat, lng) {
+      console.log('📍 MapSection: 가장 가까운 마커 찾기')
+      return this.mapStore.findNearestMarker(lat, lng)
     }
   }
 }
@@ -276,14 +173,13 @@ export default {
 
 <style scoped>
 .map-section {
-  flex: 1;
-  height: 100vh;
-  width: 100%;
-  margin: 0;
-  padding: 0;
-  overflow: hidden;
+  position: fixed;
+  top: 60px; /* 상단 네비바 높이 */
+  left: 380px; /* 왼쪽 사이드바 너비 */
+  right: 0;
+  bottom: 0;
   background: white;
-  position: relative;
+  overflow: hidden;
 }
 
 .map {
@@ -294,10 +190,21 @@ export default {
   border: none;
   display: block;
   background: white;
-  position: absolute;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
+}
+
+/* 반응형 디자인 */
+@media (max-width: 768px) {
+  .map-section {
+    top: 50px; /* 모바일용 상단 네비바 높이 */
+    left: 280px; /* 모바일용 사이드바 너비 */
+  }
+}
+
+@media (max-width: 480px) {
+  .map-section {
+    top: 50px;
+    left: 0;
+    bottom: 40vh; /* 모바일에서는 하단에 사이드바가 올라옴 */
+  }
 }
 </style>
